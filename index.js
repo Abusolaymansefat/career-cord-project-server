@@ -15,6 +15,15 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+var admin = require("firebase-admin");
+
+var serviceAccount = require("./firebase-admin-key.json");
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount)
+});
+
+
 const logger = (req,res, next) => {
   console.log('inside the logger middleware');
   next()
@@ -35,10 +44,20 @@ const verifyToken = (req, res, next) => {
     req.decoded = decoded;
     next()
   })
-
-  
  
 }
+
+const verifyFirebaseToken = async(req,res, next)=> {
+  const authHeader = req.headers.authorization;
+  const token = authHeader.split('')[1]
+  if(token){
+    return res.status(401).send({ message: 'unauthorized access'})
+  }
+  const userInfo = await admin.auth().verifyIdToken(token);
+  req.tokenEmail = userInfo.email;
+  next()
+}
+
 const uri =`mongodb+srv://${process.env.DB_USER}:${process.env.DB_pass}@cluster0.sq4up6y.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -132,14 +151,16 @@ async function run() {
     
 
     //job applicatons related apls
-    app.get('/applications', logger, verifyToken, async(req, res) => {
+    app.get('/applications', logger, verifyFirebaseToken, async(req, res) => {
       const email = req.query.email;
 
       // console.log("inside applications api", req.cookies)
-      if(email !== req.decoded.email){
-        return res.status(403).send({message: 'forbidden access'})
+      // if(email !== req.decoded.email){
+      //   return res.status(403).send({message: 'forbidden access'})
+      // }
+      if(req.tokenEmail != email){
+        return res.status(403).send({ message: 'forbidden access'})
       }
-
       const query = {
         applicant: email
       }
